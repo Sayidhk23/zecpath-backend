@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import JobListAPI, EmployerJobCreateAPI, CandidateApplyAPI, AdminUserListAPI, JobDetailAPI, EmployerJobStatusAPI, FeaturedJobListAPI, LatestJobListAPI, MyApplicationHistoryAPI, ApplicationDetailAPI, ApplicationStatusUpdateAPI
+from .views import JobListAPI, EmployerJobCreateAPI, CandidateApplyAPI, AdminUserListAPI, JobDetailAPI, EmployerJobStatusAPI, FeaturedJobListAPI, LatestJobListAPI, MyApplicationHistoryAPI, ApplicationDetailAPI, ApplicationStatusUpdateAPI, EmployerJobDashboardAPI, EmployerJobUpdateAPI, EmployerApplicantListAPI, EmployerCloseHiringAPI, EmployerDashboardAnalyticsAPI
 
 urlpatterns = [
     path('job/', JobListAPI.as_view(), name= 'job-list'),
@@ -16,5 +16,10 @@ urlpatterns = [
     path("job/latest/", LatestJobListAPI.as_view(), name="latest-jobs"),
     path("application/my/", MyApplicationHistoryAPI.as_view(), name="my-application-history"),
     path("application/<int:application_id>/", ApplicationDetailAPI.as_view(), name="application-details"),
-    path("application/<int:application_id>/status/", ApplicationStatusUpdateAPI.as_view(), name="application-status-update")
+    path("application/<int:application_id>/status/", ApplicationStatusUpdateAPI.as_view(), name="application-status-update"),
+    path("employer/job/", EmployerJobDashboardAPI.as_view(), name="employer-job-dashboard"),
+    path("employer/job/<int:job_id>/update/", EmployerJobUpdateAPI.as_view(), name='employer-job-update'),
+    path("employer/job/<int:job_id>/applicants/", EmployerApplicantListAPI.as_view(), name="employer-job-application"),
+    path("employer/job/<int:job_id>/close/", EmployerCloseHiringAPI.as_view(), name="employer-job-close"),
+    path("employer/dashboard/analytics/", EmployerDashboardAnalyticsAPI.as_view(), name="employer-dashboard-analytics"),
 ]

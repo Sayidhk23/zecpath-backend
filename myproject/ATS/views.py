@@ -530,3 +530,256 @@ class ApplicationStatusUpdateAPI(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+
+class EmployerJobDashboardAPI(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+
+        # Check employer role
+        if request.user.role != "employer":
+            return Response(
+                {
+                    "success": False,
+                    "message": "Only employers can access this dashboard."
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Get the logged-in employer's jobs only
+        jobs = Job.objects.filter(
+            employer=request.user.employer_profile
+        ).order_by("-id")
+
+        # Prepare response
+        data = []
+
+        for job in jobs:
+            data.append({
+                "id": job.id,
+                "title": job.title,
+                "department": job.department,
+                "location": job.location,
+                "is_active": job.is_active,
+            })
+
+        return Response(
+            {
+                "success": True,
+                "message": "Employer jobs retrieved successfully.",
+                "total_jobs": jobs.count(),
+                "jobs": data,
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+class EmployerJobUpdateAPI(APIView):
+
+    permission_classes = [IsAuthenticated, IsEmployer]
+
+    def patch(self, request, job_id):
+
+        try:
+            job = Job.objects.get(
+                id=job_id,
+                employer=request.user.employer_profile
+            )
+
+        except Job.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": "Job not found or access denied."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = JobSerializer(
+            job,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+
+            serializer.save()
+
+            return Response({
+                "success": True,
+                "message": "Job updated successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        return Response({
+            "success": False,
+            "message": "Validation failed.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployerApplicantListAPI(APIView):
+
+    permission_classes = [IsAuthenticated, IsEmployer]
+
+    def get(self, request, job_id):
+
+        # Verify job ownership
+        try:
+            job = Job.objects.get(
+                id=job_id,
+                employer__user_id=request.user.id
+            )
+        except Job.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": "Job not found or access denied."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Get applicants for this job
+        applications = Application.objects.filter(
+            job=job
+        ).select_related(
+            "candidate",
+            "candidate__user",
+            "job"
+        ).order_by("-applied_at")
+
+        # Filter by ATS stage
+        stage = request.query_params.get("stage")
+
+        if stage:
+            applications = applications.filter(
+                status__iexact=stage
+            )
+
+        # Search candidates by name or email
+        search = request.query_params.get("search")
+
+        if search:
+            applications = applications.filter(
+                Q(candidate__user__first_name__icontains=search) |
+                Q(candidate__user__last_name__icontains=search) |
+                Q(candidate__user__email__icontains=search)
+            )
+
+        serializer = ApplicationSerializer(
+            applications,
+            many=True
+        )
+
+        return Response({
+            "success": True,
+            "message": "Applicants retrieved successfully.",
+            "job_id": job.id,
+            "job_title": job.title,
+            "total_applicants": applications.count(),
+            "applicants": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+class EmployerCloseHiringAPI(APIView):
+
+    permission_classes = [IsAuthenticated, IsEmployer]
+
+    def patch(self, request, job_id):
+
+        try:
+            job = Job.objects.get(
+                id=job_id,
+                employer__user_id=request.user.id
+            )
+
+        except Job.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": "Job not found or access denied."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Check whether already closed
+        if job.status == "closed":
+            return Response({
+                "success": False,
+                "message": "Hiring is already closed."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        # Close hiring
+        job.status = "closed"
+        job.is_active = False
+
+        job.save(update_fields=["status", "is_active"])
+
+        return Response({
+            "success": True,
+            "message": "Hiring closed successfully.",
+            "job_id": job.id,
+            "job_title": job.title,
+            "status": job.status,
+            "is_active": job.is_active
+        }, status=status.HTTP_200_OK)
+
+
+class EmployerDashboardAnalyticsAPI(APIView):
+
+    permission_classes = [IsAuthenticated, IsEmployer]
+
+    def get(self, request):
+
+        # Get only the logged-in employer's jobs
+        jobs = Job.objects.filter(
+            employer__user_id=request.user.id
+        )
+
+        # Get applications belonging to those jobs
+        applications = Application.objects.filter(
+            job__employer__user_id=request.user.id
+        )
+
+        # Job statistics
+        total_jobs = jobs.count()
+
+        active_jobs = jobs.filter(
+            is_active=True
+        ).count()
+
+        closed_jobs = jobs.filter(
+            status="closed"
+        ).count()
+
+        # Application statistics
+        total_applications = applications.count()
+
+        shortlisted = applications.filter(
+            status__iexact="shortlisted"
+        ).count()
+
+        rejected = applications.filter(
+            status__iexact="rejected"
+        ).count()
+
+        # Calculate shortlist ratio
+        if total_applications > 0:
+            shortlist_ratio = round(
+                (shortlisted / total_applications) * 100,
+                2
+            )
+        else:
+            shortlist_ratio = 0
+
+        return Response({
+            "success": True,
+            "message": "Employer dashboard analytics retrieved successfully.",
+
+            "job_statistics": {
+                "total_jobs": total_jobs,
+                "active_jobs": active_jobs,
+                "closed_jobs": closed_jobs
+            },
+
+            "application_statistics": {
+                "total_applications": total_applications,
+                "shortlisted_candidates": shortlisted,
+                "rejected_candidates": rejected,
+                "shortlist_ratio": shortlist_ratio
+            }
+
+        }, status=status.HTTP_200_OK)
