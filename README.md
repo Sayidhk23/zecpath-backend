@@ -35,7 +35,8 @@ Candidate → Job Application → ATS Screening → AI Call → Interview → Sh
 
 ```text
 myproject/
-├── apps/
+├── ATS(app)/
+├── users(app)/
 ├── services/
 ├── utils/
 ├── core/
